@@ -736,6 +736,7 @@ async def finalize_document(
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🔁 К категориям", callback_data="docs")],
+                [InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="feedback_start")],
                 [InlineKeyboardButton(text="📄 DOCX (скоро)", callback_data="docx_placeholder")],
                 [InlineKeyboardButton(text="🚀 Про-режим в разработке", callback_data="upgrade")],
             ]

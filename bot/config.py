@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     bot_token: str = Field(..., description="Telegram bot token")
-    admin_ids: List[int] = Field(default_factory=lambda: [298753135])
+    admin_ids: List[int] = Field(default_factory=list, env="ADMIN_IDS")
     enable_logging: bool = True
     monthly_document_limit: int = Field(default=30, description="Documents per month limit")
     main_channel_id: int = Field(..., description="ID обязательного канала")
