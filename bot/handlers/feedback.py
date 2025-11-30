@@ -22,7 +22,10 @@ async def feedback_start(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.text)
+@router.message(
+    F.text,
+    F.from_user.id.func(lambda user_id: user_id in waiting_feedback_users),
+)
 async def feedback_catcher(message: Message):
     if not message.from_user:
         return
@@ -51,5 +54,3 @@ async def feedback_catcher(message: Message):
 
         await message.answer("Спасибо за отзыв! 💚 Очень ценим вашу помощь.")
         return
-
-    # иначе — передать сообщение дальше другим роутерам

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ..config import Settings
 from .analytics import AnalyticsService
@@ -18,12 +18,21 @@ class UserProfile:
     history: List[str] | None = None
 
 
+@dataclass
+class GeneratedDocument:
+    code: str
+    title: str
+    template_name: str
+    context: Dict[str, str]
+
+
 class StorageService:
     def __init__(self, settings: Settings, analytics: AnalyticsService) -> None:
         self.settings = settings
         self.analytics = analytics
         self.user_profiles: Dict[int, UserProfile] = {}
         self.document_counter: Dict[str, int] = defaultdict(int)
+        self._last_documents: Dict[int, GeneratedDocument] = {}
 
     def get_profile(self, user_id: int) -> UserProfile:
         if user_id not in self.user_profiles:
@@ -44,6 +53,14 @@ class StorageService:
         profile.history.append(document)
         self.document_counter[document] += 1
         self.analytics.log_event("document_generated", user_id, {"document": document})
+
+    def remember_last_document(
+        self, user_id: int, generated: GeneratedDocument
+    ) -> None:
+        self._last_documents[user_id] = generated
+
+    def get_last_document(self, user_id: int) -> Optional[GeneratedDocument]:
+        return self._last_documents.get(user_id)
 
     def activate_pro(self, user_id: int) -> None:
         profile = self.get_profile(user_id)
