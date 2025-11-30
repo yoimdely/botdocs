@@ -3,7 +3,7 @@
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict
 
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -24,62 +24,20 @@ class PdfBuilder:
         self.template_loader = template_loader
 
     def _ensure_font(self) -> str:
-        """Register a Cyrillic-capable font once using system fonts only.
-
-        We avoid bundling TTF/OTF files; instead, we look up common free fonts
-        that ship with most Linux/Windows/macOS systems (DejaVu/Liberation/Noto/Arial)
-        and embed the first one we find.
-        """
-
-        def iter_candidates() -> Sequence[Tuple[str, Path, Optional[Path]]]:
-            return (
-                (
-                    "DejaVuSerif",
-                    Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"),
-                    Path("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
-                ),
-                (
-                    "DejaVuSans",
-                    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-                    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-                ),
-                (
-                    "LiberationSerif",
-                    Path("/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf"),
-                    Path("/usr/share/fonts/truetype/liberation2/LiberationSerif-Bold.ttf"),
-                ),
-                (
-                    "NotoSans",
-                    Path("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"),
-                    Path("/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
-                ),
-                (
-                    "Arial",
-                    Path("C:/Windows/Fonts/arial.ttf"),
-                    Path("C:/Windows/Fonts/arialbd.ttf"),
-                ),
-                (
-                    "ArialMac",
-                    Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
-                    Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
-                ),
-            )
+        """Register bundled DejaVuSerif fonts to render Cyrillic correctly."""
 
         if PdfBuilder._font_registered:
-            return "CLEAN_DOC_FONT"
+            return "DejaVuSerif"
 
-        for _family, regular, bold in iter_candidates():
-            if not regular.exists():
-                continue
+        fonts_dir = Path(__file__).resolve().parent.parent / "data" / "fonts"
+        regular = fonts_dir / "DejaVuSerif.ttf"
+        bold = fonts_dir / "DejaVuSerif-Bold.ttf"
 
-            pdfmetrics.registerFont(TTFont("CLEAN_DOC_FONT", str(regular)))
-            if bold and bold.exists():
-                pdfmetrics.registerFont(TTFont("CLEAN_DOC_FONT_BOLD", str(bold)))
-            PdfBuilder._font_registered = True
-            return "CLEAN_DOC_FONT"
+        pdfmetrics.registerFont(TTFont("DejaVuSerif", str(regular)))
+        pdfmetrics.registerFont(TTFont("DejaVuSerif-Bold", str(bold)))
 
-        # Fallback to Helvetica (may not render Cyrillic perfectly but keeps PDF generation working)
-        return "Helvetica"
+        PdfBuilder._font_registered = True
+        return "DejaVuSerif"
 
     def build(self, template_name: str, context: Dict[str, str]) -> BytesIO:
         font_name = self._ensure_font()
@@ -95,7 +53,7 @@ class PdfBuilder:
         story = []
         styles = getSampleStyleSheet()
         registered_fonts = set(pdfmetrics.getRegisteredFontNames())
-        title_font = "CLEAN_DOC_FONT_BOLD" if "CLEAN_DOC_FONT_BOLD" in registered_fonts else font_name
+        title_font = "DejaVuSerif-Bold" if "DejaVuSerif-Bold" in registered_fonts else font_name
 
         normal = styles["Normal"]
         normal.fontSize = 14

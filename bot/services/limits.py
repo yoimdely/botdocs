@@ -1,7 +1,7 @@
-﻿import asyncio
+import asyncio
 import sqlite3
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -15,53 +15,57 @@ def _get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(_DB_PATH)
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS usage_limits (
+        CREATE TABLE IF NOT EXISTS user_document_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            year_month TEXT NOT NULL,
-            doc_count INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(user_id, year_month)
+            created_at TEXT NOT NULL
         )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_user_document_usage_month
+        ON user_document_usage (user_id, created_at)
         """
     )
     return conn
 
 
-def get_current_year_month() -> str:
-    return datetime.utcnow().strftime("%Y-%m")
+def get_month_start(now: Optional[datetime] = None) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    return current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _fetch_count(user_id: int, year_month: str) -> int:
+def _fetch_count_since(user_id: int, created_from: str) -> int:
     with closing(_get_connection()) as conn:
         cursor = conn.execute(
-            "SELECT doc_count FROM usage_limits WHERE user_id = ? AND year_month = ?",
-            (user_id, year_month),
+            "SELECT COUNT(*) FROM user_document_usage WHERE user_id = ? AND created_at >= ?",
+            (user_id, created_from),
         )
         row = cursor.fetchone()
         return row[0] if row else 0
 
 
-def _increment(user_id: int, year_month: str) -> None:
+def _insert_usage(user_id: int, created_at: str) -> None:
     with closing(_get_connection()) as conn:
         conn.execute(
             """
-            INSERT INTO usage_limits (user_id, year_month, doc_count)
-            VALUES (?, ?, 1)
-            ON CONFLICT(user_id, year_month) DO UPDATE SET doc_count = doc_count + 1
+            INSERT INTO user_document_usage (user_id, created_at)
+            VALUES (?, ?)
             """,
-            (user_id, year_month),
+            (user_id, created_at),
         )
         conn.commit()
 
 
-async def get_user_doc_count(user_id: int, year_month: Optional[str] = None) -> int:
-    ym = year_month or get_current_year_month()
-    return await asyncio.to_thread(_fetch_count, user_id, ym)
+async def get_user_doc_count(user_id: int, month_start: Optional[datetime] = None) -> int:
+    start = month_start or get_month_start()
+    return await asyncio.to_thread(_fetch_count_since, user_id, start.isoformat())
 
 
-async def increment_user_doc_count(user_id: int, year_month: Optional[str] = None) -> None:
-    ym = year_month or get_current_year_month()
-    await asyncio.to_thread(_increment, user_id, ym)
+async def register_document_usage(user_id: int, created_at: Optional[datetime] = None) -> None:
+    timestamp = (created_at or datetime.now(timezone.utc)).isoformat()
+    await asyncio.to_thread(_insert_usage, user_id, timestamp)
 
 
 async def can_create_document(user_id: int, limit: Optional[int] = None) -> bool:
