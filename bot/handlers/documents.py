@@ -718,13 +718,6 @@ async def finalize_document(
     answers: List[str] = data.get("answers", [])
     context = {question.key: answer for question, answer in zip(document.questions, answers)}
     context["document_title"] = document.title
-    context[
-        "brand_note"
-    ] = (
-        "Документ сформирован автоматически на основе введённых данных.\n"
-        "Сервис не оказывает юридические услуги и не заменяет консультацию специалиста.\n"
-        "Бот: @generatordocumentovbot"
-    )
     template_loader = TemplateLoader(TEMPLATES_DIR)
     pdf_builder = PdfBuilder(template_loader)
     pdf_file = pdf_builder.build(document.template, context)

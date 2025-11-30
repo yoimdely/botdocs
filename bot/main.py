@@ -22,7 +22,7 @@ async def main() -> None:
     storage_service = StorageService(settings=settings, analytics=analytics)
 
     dp.include_router(commands.setup_router(settings, analytics, storage_service))
-    dp.include_router(feedback.router)
+    dp.include_router(feedback.setup_router(settings, storage_service))
     dp.include_router(documents.setup_router(settings, analytics, storage_service))
     dp.include_router(payments.setup_router(settings, analytics, storage_service))
     dp.include_router(admin.setup_router(settings, analytics, storage_service))
