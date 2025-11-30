@@ -14,9 +14,10 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 
 from ..config import Settings
 from ..services.analytics import AnalyticsService
+from ..services.docx_builder import DocxBuilder
 from ..services.pdf_builder import PdfBuilder
 from ..services.subscription import is_subscribed
-from ..services.storage import StorageService
+from ..services.storage import GeneratedDocument, StorageService
 from ..services.templates_loader import TemplateLoader
 from .keyboards import subscription_keyboard
 from .middleware import DependencyMiddleware
@@ -72,6 +73,9 @@ CATEGORY_META: Dict[str, str] = {
     "papers": "📄 Расписки и полномочия",
     "claims": "⚖ Претензии и расчёты",
 }
+
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "data" / "templates"
 
 
 DOCUMENTS_DATA = [
@@ -506,6 +510,7 @@ DOCUMENTS_DATA = [
             q("violation_details", "Опишите нарушение со стороны арендатора:", "Задолженность по аренде более 2 месяцев"),
             q("landlord_demand", "Сформулируйте требования к арендатору:", "Погасить долг и штраф в течение 5 дней"),
             q("deadline", "Срок исполнения требований (например, «5 дней»):", "5 календарных дней"),
+            q("location", "Город составления претензии:", "Москва"),
             q("claim_date", "Дата составления претензии (ДД.ММ.ГГГГ):", "06.04.2025", DATE_PATTERN, "Формат 06.04.2025"),
         ],
     },
@@ -720,13 +725,22 @@ async def finalize_document(
         "Сервис не оказывает юридические услуги и не заменяет консультацию специалиста.\n"
         "Бот: @generatordocumentovbot"
     )
-    template_loader = TemplateLoader(Path(__file__).resolve().parent.parent / "data" / "templates")
+    template_loader = TemplateLoader(TEMPLATES_DIR)
     pdf_builder = PdfBuilder(template_loader)
     pdf_file = pdf_builder.build(document.template, context)
     pdf_bytes = pdf_file.getvalue()
     pdf_file.close()
 
     storage.register_generation(message.from_user.id, document.title)
+    storage.remember_last_document(
+        message.from_user.id,
+        GeneratedDocument(
+            code=document.code,
+            title=document.title,
+            template_name=document.template,
+            context=dict(context),
+        ),
+    )
     analytics.log_event("document_generated", message.from_user.id, {"document": document.title})
 
     document_file = BufferedInputFile(pdf_bytes, filename=f"{document.code}.pdf")
@@ -736,7 +750,8 @@ async def finalize_document(
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="🔁 К категориям", callback_data="docs")],
-                [InlineKeyboardButton(text="📄 DOCX (скоро)", callback_data="docx_placeholder")],
+                [InlineKeyboardButton(text="💬 Оставить отзыв", callback_data="feedback_start")],
+                [InlineKeyboardButton(text="📄 DOCX-файл", callback_data="docx_download")],
                 [InlineKeyboardButton(text="🚀 Про-режим в разработке", callback_data="upgrade")],
             ]
         ),
@@ -744,8 +759,25 @@ async def finalize_document(
     await state.clear()
 
 
-async def docx_placeholder(callback: CallbackQuery) -> None:
-    await callback.answer("DOCX-формат скоро добавим 💪", show_alert=True)
+async def send_docx(callback: CallbackQuery, storage: StorageService) -> None:
+    await callback.answer()
+    last_document = storage.get_last_document(callback.from_user.id)
+    if not last_document:
+        await callback.message.answer(
+            "Чтобы получить DOCX, сначала сформируйте документ."
+        )
+        return
+
+    template_loader = TemplateLoader(TEMPLATES_DIR)
+    docx_builder = DocxBuilder(template_loader)
+    docx_file = docx_builder.build(last_document.template_name, last_document.context)
+    docx_bytes = docx_file.getvalue()
+    docx_file.close()
+
+    await callback.message.answer_document(
+        BufferedInputFile(docx_bytes, filename=f"{last_document.code}.docx"),
+        caption=f"DOCX-версия: {last_document.title}",
+    )
 
 
 async def upgrade_placeholder(callback: CallbackQuery) -> None:
@@ -789,7 +821,7 @@ def setup_handlers(router: Router) -> None:
     router.callback_query.register(show_docs, F.data == "docs")
     router.callback_query.register(show_category_documents, F.data.startswith("cat:"))
     router.callback_query.register(start_document, F.data.startswith("doc:"))
-    router.callback_query.register(docx_placeholder, F.data == "docx_placeholder")
+    router.callback_query.register(send_docx, F.data == "docx_download")
     router.callback_query.register(upgrade_placeholder, F.data == "upgrade")
     router.callback_query.register(check_subscription_handler, F.data == "check_subscription")
     router.callback_query.register(wizard_back, F.data == "wizard_back")
